@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Map</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<style>
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+.pulse {
+  width: 14px;
+  height: 14px;
+  background: #ff9800;
+  border-radius: 50%;
+  position: relative;
+}
+
+.pulse::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  background: rgba(255, 152, 0, 0.6);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+}
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<script>
+
+const SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
+const SUPABASE_ANON_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
+
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+const tg = window.Telegram?.WebApp || null
+const myId = tg?.initDataUnsafe?.user?.id || null
+
+const map = L.map("map").setView([52.52, 13.40], 12)
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19
+}).addTo(map)
+
+let markers = {}
+
+let myLat = null
+let myLon = null
+
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180) *
+    Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c;
+}
+
+navigator.geolocation?.getCurrentPosition(
+  (pos) => {
+    myLat = pos.coords.latitude
+    myLon = pos.coords.longitude
+  },
+  () => {}
+)
+
+function sendAction(action, payload = {}) {
+
+  if (!myId) {
+    alert("Открой в Telegram")
+    return
+  }
+
+  tg.sendData(JSON.stringify({
+    action,
+    ...payload
+  }))
+}
+
+function meetUser(postId) {
+  sendAction("meet", { post_id: postId })
+}
+
+function reportUser(userId) {
+  sendAction("report", { user_id: userId })
+}
+
+async function loadPosts() {
+
+  const { data, error } = await client
+    .from("posts")
+    .select("*")
+    .eq("active", true)
+
+  if (error) return console.error(error)
+
+  Object.values(markers).forEach(m => map.removeLayer(m))
+  markers = {}
+
+  data.forEach(p => {
+
+    if (!p.lat || !p.lon) return
+
+    const icon = L.divIcon({ className: "pulse" })
+
+    const marker = L.marker([p.lat, p.lon], { icon })
+
+    marker.bindPopup(`
+      <b>${p.name}</b><br/>
+      🎂 ${p.age} лет<br/>
+      🍺 ${p.drinks}<br/>
+
+      📍 ${
+        (myLat && myLon)
+          ? getDistance(myLat, myLon, p.lat, p.lon).toFixed(1) + " км"
+          : "..."
+      }
+      <br/><br/>
+
+      <a href="https://t.me/drink_nearby_bot?start=post_${p.id}">
+        👤 Открыть анкету
+      </a>
+      <br/><br/>
+
+      <button onclick="meetUser(${p.id})">🍻 Встретиться</button>
+      <button onclick="reportUser(${p.user_id})">🚨 Пожаловаться</button>
+    `)
+
+    marker.addTo(map)
+    markers[p.id] = marker
+  })
+}
+
+setInterval(loadPosts, 8000)
+setTimeout(loadPosts, 500)
+
+tg?.ready()
+tg?.expand()
+
+</script>
+
+</body>
+</html>

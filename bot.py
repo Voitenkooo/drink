@@ -253,8 +253,8 @@ async def handler(message: Message):
     if text == btn(user_id, "create"):
 
         if has_active_post(user_id):
-        await message.answer("❗ У тебя уже есть активная анкета")
-        return
+            await message.answer("❗ У тебя уже есть активная анкета")
+            return
 
         user_step[user_id] = "name"
         user_data[user_id] = {}

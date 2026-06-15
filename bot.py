@@ -590,6 +590,7 @@ async def cleanup():
 
 # ---------------- MAIN
 async def main():
+    await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(cleanup())
     await dp.start_polling(bot)
 

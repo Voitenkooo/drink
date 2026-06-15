@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Map</title>
+<title>Drink Map</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -10,10 +10,10 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
-
 html, body {
   margin: 0;
   height: 100%;
+  font-family: Arial;
 }
 
 #map {
@@ -21,7 +21,7 @@ html, body {
   height: 100%;
 }
 
-/* MARKER */
+/* 🔥 красивый пульс */
 .pulse {
   width: 14px;
   height: 14px;
@@ -33,102 +33,30 @@ html, body {
 .pulse::after {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
   width: 14px;
   height: 14px;
-  background: rgba(255, 152, 0, 0.6);
+  background: rgba(255, 152, 0, 0.5);
   border-radius: 50%;
-  transform: translate(-50%, -50%);
   animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {
-  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(4); opacity: 0; }
 }
 
-/* CARD */
-#card {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: -420px;
-  height: 380px;
-  background: white;
-  border-radius: 24px 24px 0 0;
-  box-shadow: 0 -10px 40px rgba(0,0,0,.2);
-  transition: .35s;
-  z-index: 9999;
-  overflow: hidden;
-}
-
-#card.show {
-  bottom: 0;
-}
-
-#close {
-  position: absolute;
-  right: 18px;
-  top: 14px;
-  font-size: 22px;
-  cursor: pointer;
-  z-index: 2;
-}
-
-#card img {
-  width: 100%;
-  height: 180px;
-  object-fit: cover;
-  background: #eee;
-}
-
-#cardBody {
-  padding: 14px;
-}
-
-#name {
-  font-size: 22px;
-  font-weight: 700;
-}
-
-#info {
-  margin-top: 6px;
-  color: #555;
-}
-
-#time {
-  margin-top: 6px;
-  color: #ff9800;
-}
-
-.buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.buttons button {
-  flex: 1;
-  height: 46px;
-  border: none;
-  border-radius: 12px;
+/* popup */
+.leaflet-popup-content {
   font-size: 14px;
 }
-
-#meet {
-  background: #ff9800;
-  color: white;
+button {
+  margin-top: 5px;
+  width: 100%;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
 }
-
-#photos {
-  background: #eee;
-}
-
-#report {
-  width: 60px;
-}
-
 </style>
 </head>
 
@@ -136,45 +64,22 @@ html, body {
 
 <div id="map"></div>
 
-<!-- CARD -->
-<div id="card">
-
-<div id="close">✕</div>
-
-<img id="cardImg">
-
-<div id="cardBody">
-
-<div id="name"></div>
-<div id="info"></div>
-<div id="time"></div>
-
-<div class="buttons">
-
-<button id="meet">🍻</button>
-<button id="photos">📷</button>
-<button id="report">🚨</button>
-
-</div>
-
-</div>
-
-</div>
-
 <script>
 
 const SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
-const SUPABASE_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
 
-const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+// ⚠️ ВПИШИ СЮДА anon key (обязательно)
+const SUPABASE_ANON_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
 
-const tg = window.Telegram?.WebApp
-const myId = tg?.initDataUnsafe?.user?.id
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+const tg = window.Telegram?.WebApp || null
+const myId = tg?.initDataUnsafe?.user?.id || null
 
 const map = L.map("map").setView([52.52, 13.40], 12)
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-maxZoom: 19
+  maxZoom: 19
 }).addTo(map)
 
 let markers = {}
@@ -182,145 +87,272 @@ let markers = {}
 let myLat = null
 let myLon = null
 
-let currentPost = null
-let currentPhotos = []
+// ---------------- DISTANCE
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
 
-// DIST
-function dist(a,b,c,d){
-const R=6371
-const dLat=(c-a)*Math.PI/180
-const dLon=(d-b)*Math.PI/180
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
 
-const x=
-Math.sin(dLat/2)**2+
-Math.cos(a*Math.PI/180)*
-Math.cos(c*Math.PI/180)*
-Math.sin(dLon/2)**2
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180) *
+    Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
 
-return 2*R*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c;
 }
 
-// SEND TO BOT
-function send(action,payload={}){
-if(!myId){
-alert("Открой в Telegram")
-return
-}
-tg.sendData(JSON.stringify({action,...payload}))
-}
+// ---------------- MY LOCATION
+navigator.geolocation?.getCurrentPosition(
+  (pos) => {
+    myLat = pos.coords.latitude
+    myLon = pos.coords.longitude
 
-// CARD OPEN
-function openCard(p){
+    map.setView([myLat, myLon], 13)
 
-currentPost = p
-
-try{
-currentPhotos = JSON.parse(p.photos||"[]")
-}catch{
-currentPhotos=[]
-}
-
-document.getElementById("cardImg").src =
-currentPhotos[0] || "https://placehold.co/600x400"
-
-document.getElementById("name").innerText =
-p.name + ", " + p.age
-
-document.getElementById("info").innerText =
-"🍺 " + p.drinks
-
-const mins =
-Math.max(
-0,
-Math.floor((new Date(p.expires_at)-new Date())/60000)
+    L.circle([myLat, myLon], {
+      radius: 300,
+      color: "blue",
+      fillOpacity: 0.1
+    }).addTo(map)
+  },
+  () => {}
 )
 
-document.getElementById("time").innerText =
-"⏳ " + mins + " мин"
+// ---------------- SEND TO BOT
+function sendAction(action, payload = {}) {
 
-document.getElementById("card").classList.add("show")
+  if (!myId) {
+    alert("Открой в Telegram")
+    return
+  }
 
+  tg.sendData(JSON.stringify({
+    action,
+    ...payload
+  }))
 }
 
-// CLOSE
-document.getElementById("close").onclick=
-()=>{
-document.getElementById("card").classList.remove("show")
+function meetUser(postId) {
+  sendAction("meet", { post_id: postId })
 }
 
-// BUTTONS
-document.getElementById("meet").onclick=
-()=>{
-if(currentPost)
-send("meet",{post_id:currentPost.id})
+function reportUser(userId) {
+  sendAction("report", { user_id: userId })
 }
 
-document.getElementById("report").onclick=
-()=>{
-if(currentPost)
-send("report",{user_id:currentPost.user_id})
+// ---------------- LOAD POSTS
+async function loadPosts() {
+
+  const { data, error } = await client
+    .from("posts")
+    .select("*")
+    .eq("active", true)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  // remove old markers
+  Object.values(markers).forEach(m => map.removeLayer(m))
+  markers = {}
+
+  data.forEach(p => {
+
+    if (!p.lat || !p.lon) return
+
+    const icon = L.divIcon({
+      className: "pulse"
+    })
+
+    const marker = L.marker([p.lat, p.lon], { icon })
+
+    let distanceText = "..."
+
+    if (myLat && myLon) {
+      distanceText = getDistance(myLat, myLon, p.lat, p.lon).toFixed(1) + " км"
+    }
+
+    const popupHTML = `
+      <div style="min-width:180px">
+
+        <b>${p.name}</b><br/>
+        🎂 ${p.age} лет<br/>
+        🍺 ${p.drinks}<br/>
+        📍 ${distanceText}
+
+        <hr/>
+
+        <button onclick="window.open('https://t.me/drink_nearby_bot?start=post_${p.id}')">
+          👤 Открыть анкету
+        </button>
+
+        <button onclick="meetUser(${p.id})">
+          🍻 Встретиться
+        </button>
+
+        <button onclick="reportUser(${p.user_id})">
+          🚨 Жалоба
+        </button>
+
+      </div>
+    `
+
+    marker.bindPopup(popupHTML)
+
+    marker.addTo(map)
+    markers[p.id] = marker
+  })
 }
 
-document.getElementById("photos").onclick=
-()=>{
-if(!currentPost) return
-window.open(`https://t.me/drink_nearby_bot?start=post_${currentPost.id}`)
-}
+// ---------------- AUTO REFRESH
+loadPosts()
+setInterval(loadPosts, 8000)
 
-// GEO
-navigator.geolocation?.getCurrentPosition((pos)=>{
+// ---------------- TELEGRAM READY
+tg?.ready()
+tg?.expand()
 
-myLat=pos.coords.latitude
-myLon=pos.coords.longitude
+<script>
 
-map.setView([myLat,myLon],14)
+const SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
+const SUPABASE_ANON_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
 
-L.circleMarker([myLat,myLon],{
-radius:10,
-color:"#2196f3"
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+const tg = window.Telegram?.WebApp || null
+const myId = tg?.initDataUnsafe?.user?.id || null
+
+const map = L.map("map").setView([52.52, 13.40], 12)
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19
 }).addTo(map)
 
-})
+let markers = {}
 
-// LOAD POSTS
-async function load(){
+let myLat = null
+let myLon = null
 
-const {data} = await client
-.from("posts")
-.select("*")
-.eq("active",true)
+// показать мою точку
+navigator.geolocation?.getCurrentPosition((pos) => {
+  myLat = pos.coords.latitude
+  myLon = pos.coords.longitude
 
-Object.values(markers).forEach(m=>map.removeLayer(m))
-markers={}
+  map.setView([myLat, myLon], 13)
 
-data.forEach(p=>{
-
-if(!p.lat||!p.lon) return
-
-const marker=L.marker(
-[p.lat,p.lon],
-{
-icon:L.divIcon({className:"pulse"})
-}
-)
-
-marker.on("click",()=>openCard(p))
-
-marker.addTo(map)
-
-markers[p.id]=marker
+  L.circle([myLat, myLon], {
+    radius: 300,
+    color: "#2196f3",
+    fillOpacity: 0.15
+  }).addTo(map)
 
 })
 
+// distance
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180) *
+    Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2)**2;
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c;
 }
 
-load()
-setInterval(load,8000)
+// Telegram actions
+function sendAction(action, payload = {}) {
+  if (!myId) return alert("Открой через Telegram")
+
+  tg.sendData(JSON.stringify({ action, ...payload }))
+}
+
+function meetUser(postId) {
+  sendAction("meet", { post_id: postId })
+}
+
+function reportUser(userId) {
+  sendAction("report", { user_id: userId })
+}
+
+// load posts
+async function loadPosts() {
+
+  const { data, error } = await client
+    .from("posts")
+    .select("*")
+    .eq("active", true)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  Object.values(markers).forEach(m => map.removeLayer(m))
+  markers = {}
+
+  data.forEach(p => {
+
+    if (!p.lat || !p.lon) return
+
+    const icon = L.divIcon({ className: "pulse" })
+    const marker = L.marker([p.lat, p.lon], { icon })
+
+    const dist = (myLat && myLon)
+      ? getDistance(myLat, myLon, p.lat, p.lon).toFixed(1) + " км"
+      : "..."
+
+    const popup = `
+      <div style="min-width:200px">
+
+        <b>${p.name}</b><br/>
+        🎂 ${p.age}<br/>
+        🍺 ${p.drinks}<br/>
+        📍 ${dist}
+
+        <hr/>
+
+        <button onclick="window.open('https://t.me/drink_nearby_bot?start=post_${p.id}')">
+          👤 Открыть
+        </button>
+
+        <button onclick="meetUser(${p.id})">
+          🍻 Встретиться
+        </button>
+
+        <button onclick="reportUser(${p.user_id})">
+          🚨 Жалоба
+        </button>
+
+      </div>
+    `
+
+    marker.bindPopup(popup)
+    marker.addTo(map)
+
+    markers[p.id] = marker
+  })
+
+  document.getElementById("loader").style.display = "none"
+}
+
+loadPosts()
+setInterval(loadPosts, 8000)
 
 tg?.ready()
 tg?.expand()
 
 </script>
-
 </body>
 </html>

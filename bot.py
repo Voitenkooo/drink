@@ -79,7 +79,7 @@ texts = {
 
 def t(user_id, key):
     lang = user_lang.get(user_id, "ru")
-    return texts.get(lang, texts["ru"]).get(key, key)
+    return texts.get(key, {}).get(lang, key)
 
 # ---------------- CHECK ACTIVE POST
 def has_active_post(user_id):
@@ -249,11 +249,11 @@ async def handler(message: Message):
         await message.answer("🌍 Язык установлен", reply_markup=get_kb(user_id))
         return
 
-    # ---------------- CREATE POST START
-    KeyboardButton(text=btn(user_id, "create"))
+    # CREATE POST START
+    if text == btn(user_id, "create"):
 
-    if has_active_post(user_id):
-        await message.answer(btn(user_id, "no_profile"))
+        if has_active_post(user_id):
+        await message.answer("❗ У тебя уже есть активная анкета")
         return
 
         user_step[user_id] = "name"

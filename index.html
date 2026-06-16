@@ -21,7 +21,6 @@ html, body {
   height: 100%;
 }
 
-/* 🔥 красивый пульс */
 .pulse {
   width: 14px;
   height: 14px;
@@ -45,10 +44,6 @@ html, body {
   100% { transform: scale(4); opacity: 0; }
 }
 
-/* popup */
-.leaflet-popup-content {
-  font-size: 14px;
-}
 button {
   margin-top: 5px;
   width: 100%;
@@ -65,17 +60,17 @@ button {
 <div id="map"></div>
 
 <script>
-
 const SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
-
-// ⚠️ ВПИШИ СЮДА anon key (обязательно)
 const SUPABASE_ANON_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
 
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+// FIX: правильная инициализация supabase
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+// Telegram WebApp
 const tg = window.Telegram?.WebApp || null
 const myId = tg?.initDataUnsafe?.user?.id || null
 
+// карта
 const map = L.map("map").setView([52.52, 13.40], 12)
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -83,11 +78,9 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 }).addTo(map)
 
 let markers = {}
-
 let myLat = null
 let myLon = null
 
-// ---------------- DISTANCE
 function getDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
 
@@ -95,38 +88,33 @@ function getDistance(lat1, lon1, lat2, lon2) {
   const dLon = (lon2 - lon1) * Math.PI / 180;
 
   const a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.sin(dLat/2) ** 2 +
     Math.cos(lat1*Math.PI/180) *
     Math.cos(lat2*Math.PI/180) *
-    Math.sin(dLon/2) * Math.sin(dLon/2);
+    Math.sin(dLon/2) ** 2;
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
   return R * c;
 }
 
-// ---------------- MY LOCATION
-navigator.geolocation?.getCurrentPosition(
-  (pos) => {
-    myLat = pos.coords.latitude
-    myLon = pos.coords.longitude
+// my location
+navigator.geolocation?.getCurrentPosition((pos) => {
+  myLat = pos.coords.latitude
+  myLon = pos.coords.longitude
 
-    map.setView([myLat, myLon], 13)
+  map.setView([myLat, myLon], 13)
 
-    L.circle([myLat, myLon], {
-      radius: 300,
-      color: "blue",
-      fillOpacity: 0.1
-    }).addTo(map)
-  },
-  () => {}
-)
+  L.circle([myLat, myLon], {
+    radius: 300,
+    color: "blue",
+    fillOpacity: 0.1
+  }).addTo(map)
+})
 
-// ---------------- SEND TO BOT
 function sendAction(action, payload = {}) {
-
   if (!myId) {
-    alert("Открой в Telegram")
+    alert("Открой через Telegram")
     return
   }
 
@@ -144,9 +132,7 @@ function reportUser(userId) {
   sendAction("report", { user_id: userId })
 }
 
-// ---------------- LOAD POSTS
 async function loadPosts() {
-
   const { data, error } = await client
     .from("posts")
     .select("*")
@@ -157,153 +143,11 @@ async function loadPosts() {
     return
   }
 
-  // remove old markers
+  // удалить старые маркеры
   Object.values(markers).forEach(m => map.removeLayer(m))
   markers = {}
 
   data.forEach(p => {
-
-    if (!p.lat || !p.lon) return
-
-    const icon = L.divIcon({
-      className: "pulse"
-    })
-
-    const marker = L.marker([p.lat, p.lon], { icon })
-
-    let distanceText = "..."
-
-    if (myLat && myLon) {
-      distanceText = getDistance(myLat, myLon, p.lat, p.lon).toFixed(1) + " км"
-    }
-
-    const popupHTML = `
-      <div style="min-width:180px">
-
-        <b>${p.name}</b><br/>
-        🎂 ${p.age} лет<br/>
-        🍺 ${p.drinks}<br/>
-        📍 ${distanceText}
-
-        <hr/>
-
-        <button onclick="window.open('https://t.me/drink_nearby_bot?start=post_${p.id}')">
-          👤 Открыть анкету
-        </button>
-
-        <button onclick="meetUser(${p.id})">
-          🍻 Встретиться
-        </button>
-
-        <button onclick="reportUser(${p.user_id})">
-          🚨 Жалоба
-        </button>
-
-      </div>
-    `
-
-    marker.bindPopup(popupHTML)
-
-    marker.addTo(map)
-    markers[p.id] = marker
-  })
-}
-
-// ---------------- AUTO REFRESH
-loadPosts()
-setInterval(loadPosts, 8000)
-
-// ---------------- TELEGRAM READY
-tg?.ready()
-tg?.expand()
-
-<script>
-
-const SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
-const SUPABASE_ANON_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
-
-const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-
-const tg = window.Telegram?.WebApp || null
-const myId = tg?.initDataUnsafe?.user?.id || null
-
-const map = L.map("map").setView([52.52, 13.40], 12)
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19
-}).addTo(map)
-
-let markers = {}
-
-let myLat = null
-let myLon = null
-
-// показать мою точку
-navigator.geolocation?.getCurrentPosition((pos) => {
-  myLat = pos.coords.latitude
-  myLon = pos.coords.longitude
-
-  map.setView([myLat, myLon], 13)
-
-  L.circle([myLat, myLon], {
-    radius: 300,
-    color: "#2196f3",
-    fillOpacity: 0.15
-  }).addTo(map)
-
-})
-
-// distance
-function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a =
-    Math.sin(dLat/2)**2 +
-    Math.cos(lat1*Math.PI/180) *
-    Math.cos(lat2*Math.PI/180) *
-    Math.sin(dLon/2)**2;
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c;
-}
-
-// Telegram actions
-function sendAction(action, payload = {}) {
-  if (!myId) return alert("Открой через Telegram")
-
-  tg.sendData(JSON.stringify({ action, ...payload }))
-}
-
-function meetUser(postId) {
-  sendAction("meet", { post_id: postId })
-}
-
-function reportUser(userId) {
-  sendAction("report", { user_id: userId })
-}
-
-// load posts
-async function loadPosts() {
-
-  const { data, error } = await client
-    .from("posts")
-    .select("*")
-    .eq("active", true)
-
-  if (error) {
-    console.error(error)
-    return
-  }
-
-  Object.values(markers).forEach(m => map.removeLayer(m))
-  markers = {}
-
-  data.forEach(p => {
-
     if (!p.lat || !p.lon) return
 
     const icon = L.divIcon({ className: "pulse" })
@@ -343,8 +187,6 @@ async function loadPosts() {
 
     markers[p.id] = marker
   })
-
-  document.getElementById("loader").style.display = "none"
 }
 
 loadPosts()
@@ -354,5 +196,6 @@ tg?.ready()
 tg?.expand()
 
 </script>
+
 </body>
 </html>

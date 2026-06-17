@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<title>Drink Map</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+<title>🍻 Drink Map</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
@@ -13,7 +16,8 @@
 html, body {
   margin: 0;
   height: 100%;
-  font-family: Arial;
+  font-family: system-ui, Arial;
+  background: #0b0b0f;
 }
 
 #map {
@@ -21,6 +25,16 @@ html, body {
   height: 100%;
 }
 
+/* USER MARKER */
+.me {
+  width: 14px;
+  height: 14px;
+  background: #3b82f6;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px rgba(59,130,246,0.25);
+}
+
+/* OTHER USERS */
 .pulse {
   width: 14px;
   height: 14px;
@@ -34,9 +48,9 @@ html, body {
   position: absolute;
   width: 14px;
   height: 14px;
-  background: rgba(255, 152, 0, 0.5);
+  background: rgba(255,152,0,0.4);
   border-radius: 50%;
-  animation: pulse 1.5s infinite;
+  animation: pulse 1.6s infinite;
 }
 
 @keyframes pulse {
@@ -44,33 +58,63 @@ html, body {
   100% { transform: scale(4); opacity: 0; }
 }
 
-button {
-  margin-top: 5px;
-  width: 100%;
-  padding: 6px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
+/* POPUP UI */
+.popup {
+  min-width: 220px;
 }
+
+.card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 10px;
+  color: #111;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.sub {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+.btn {
+  width: 100%;
+  padding: 8px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-blue { background: #3b82f6; color: white; }
+.btn-green { background: #22c55e; color: white; }
+.btn-red { background: #ef4444; color: white; }
 </style>
 </head>
 
 <body>
-
 <div id="map"></div>
 
 <script>
 const SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
-const SUPABASE_ANON_KEY = "sb_publishable_hbePon_xWmr_4VI2PVMqOA_6mcfey2F"
+const SUPABASE_ANON_KEY = "sb_secret_A0_2qsM_Vl_rozNLrgjBVQ_2ySF3gjq"
 
-// FIX: правильная инициализация supabase
-const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // Telegram WebApp
-const tg = window.Telegram?.WebApp || null
+const tg = window.Telegram?.WebApp
+tg?.ready()
+tg?.expand()
+
 const myId = tg?.initDataUnsafe?.user?.id || null
 
-// карта
+// MAP
 const map = L.map("map").setView([52.52, 13.40], 12)
 
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -78,42 +122,45 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 }).addTo(map)
 
 let markers = {}
+
 let myLat = null
 let myLon = null
 
 function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
+  const R = 6371
 
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
 
   const a =
     Math.sin(dLat/2) ** 2 +
     Math.cos(lat1*Math.PI/180) *
     Math.cos(lat2*Math.PI/180) *
-    Math.sin(dLon/2) ** 2;
+    Math.sin(dLon/2) ** 2
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)))
 }
 
-// my location
+// MY LOCATION
 navigator.geolocation?.getCurrentPosition((pos) => {
   myLat = pos.coords.latitude
   myLon = pos.coords.longitude
 
   map.setView([myLat, myLon], 13)
 
+  const meIcon = L.divIcon({ className: "me" })
+
+  L.marker([myLat, myLon], { icon: meIcon }).addTo(map)
+
   L.circle([myLat, myLon], {
-    radius: 300,
-    color: "blue",
-    fillOpacity: 0.1
+    radius: 400,
+    color: "#3b82f6",
+    fillOpacity: 0.08
   }).addTo(map)
 })
 
-function sendAction(action, payload = {}) {
-  if (!myId) {
+function send(action, payload = {}) {
+  if (!tg) {
     alert("Открой через Telegram")
     return
   }
@@ -124,16 +171,11 @@ function sendAction(action, payload = {}) {
   }))
 }
 
-function meetUser(postId) {
-  sendAction("meet", { post_id: postId })
-}
-
-function reportUser(userId) {
-  sendAction("report", { user_id: userId })
-}
+window.meet = (id) => send("meet", { post_id: id })
+window.report = (id) => send("report", { user_id: id })
 
 async function loadPosts() {
-  const { data, error } = await client
+  const { data, error } = await sb
     .from("posts")
     .select("*")
     .eq("active", true)
@@ -143,7 +185,7 @@ async function loadPosts() {
     return
   }
 
-  // удалить старые маркеры
+  // очистка
   Object.values(markers).forEach(m => map.removeLayer(m))
   markers = {}
 
@@ -154,37 +196,39 @@ async function loadPosts() {
     const marker = L.marker([p.lat, p.lon], { icon })
 
     const dist = (myLat && myLon)
-      ? getDistance(myLat, myLon, p.lat, p.lon).toFixed(1) + " км"
+      ? getDistance(myLat, myLon, p.lat, p.lon).toFixed(1) + " km"
       : "..."
 
-    const popup = `
-      <div style="min-width:200px">
+    const photos = JSON.parse(p.photos || "[]")
 
-        <b>${p.name}</b><br/>
-        🎂 ${p.age}<br/>
-        🍺 ${p.drinks}<br/>
-        📍 ${dist}
+    marker.bindPopup(`
+      <div class="popup">
+        <div class="card">
 
-        <hr/>
+          <div class="title">🍻 ${p.name}</div>
+          <div class="sub">🎂 ${p.age} • 🍺 ${p.drinks}</div>
+          <div class="sub">📍 ${dist}</div>
 
-        <button onclick="window.open('https://t.me/drink_nearby_bot?start=post_${p.id}')">
-          👤 Открыть
-        </button>
+          ${photos.length > 1 ? `
+            <button class="btn btn-blue"
+              onclick="window.open('https://t.me/drink_nearby_bot?start=post_${p.id}')">
+              📷 Фото
+            </button>
+          ` : ""}
 
-        <button onclick="meetUser(${p.id})">
-          🍻 Встретиться
-        </button>
+          <button class="btn btn-green" onclick="meet(${p.id})">
+            🍻 Встретиться
+          </button>
 
-        <button onclick="reportUser(${p.user_id})">
-          🚨 Жалоба
-        </button>
+          <button class="btn btn-red" onclick="report(${p.user_id})">
+            🚨 Жалоба
+          </button>
 
+        </div>
       </div>
-    `
+    `)
 
-    marker.bindPopup(popup)
     marker.addTo(map)
-
     markers[p.id] = marker
   })
 }
@@ -192,10 +236,6 @@ async function loadPosts() {
 loadPosts()
 setInterval(loadPosts, 8000)
 
-tg?.ready()
-tg?.expand()
-
 </script>
-
 </body>
 </html>

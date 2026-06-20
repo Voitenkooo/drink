@@ -184,6 +184,17 @@ kb_location = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+kb_photo = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📸 Добавить фото")],
+        [KeyboardButton(text="📷 Удалить последнее фото")],
+        [KeyboardButton(text="✅ Готово")],
+        [KeyboardButton(text="⬅️ Назад"), KeyboardButton(text="🏠 Главное меню")]
+    ],
+    resize_keyboard=True
+)
+)
+
 # =========================================================
 # CLEAN STEPS RESET
 # =========================================================
@@ -299,19 +310,57 @@ async def steps_handler(message: Message):
         user_data[uid]["drinks"] = text
         user_step[uid] = "photo"
 
-        await message.answer("📸 Пришли фото (до 3)")
+        await message.answer(
+            "📸 Пришли фото (до 3)",
+            reply_markup=kb_photo
+        )
         return
 
     # ---------------- PHOTO
     if step == "photo":
-        text = (message.text or "").strip().lower()
 
+        # если пришло фото
         if message.photo:
-            user_data[uid]["photos"].append(message.photo[-1].file_id)
-            await message.answer(f"📸 Добавлено ({len(user_data[uid]['photos'])}/3)")
+            photos = user_data[uid]["photos"]
+
+            if len(photos) >= 3:
+                await message.answer("❌ Можно максимум 3 фото")
+                return
+
+            photos.append(message.photo[-1].file_id)
+
+            await message.answer(
+                f"📸 Добавлено ({len(photos)}/3)\n"
+                "📸 Можешь добавить ещё или нажать ✅ Готово",
+                reply_markup=kb_photo
+            )
             return
 
-        if text in ["готово", "done", "finish"]:
+        text = (message.text or "").strip()
+
+        # пользователь нажал "добавить фото"
+        if text == "📸 Добавить фото":
+            await message.answer("📸 Отправь фото", reply_markup=kb_photo)
+            return
+            
+        # удалить последнее фото
+        if text == "📷 Удалить последнее фото":
+            photos = user_data[uid]["photos"]
+
+            if not photos:
+                await message.answer("❌ Нет фото для удаления", reply_markup=kb_photo)
+                return
+
+            removed = photos.pop()
+
+            await message.answer(
+                f"🗑 Фото удалено\nОсталось: {len(photos)}",
+                reply_markup=kb_photo
+            )
+            return
+
+        # готово
+        if text == "✅ Готово":
             photos = user_data[uid]["photos"]
 
             if len(photos) == 0:
@@ -319,10 +368,10 @@ async def steps_handler(message: Message):
                 return
 
             user_step[uid] = "time"
-            await message.answer("⏳ Выбери время", reply_markup=kb_time)
-            return
+           await message.answer("⏳ Выбери время", reply_markup=kb_time)
+           return
 
-        await message.answer("📸 Отправь фото или напиши 'готово'")
+        await message.answer("📸 Отправь фото или нажми кнопку ниже", reply_markup=kb_photo)
         return
 
     # ---------------- TIME

@@ -64,24 +64,151 @@ user_lang = {}
 LANGS = ["ru", "ua", "en", "de"]
 
 TEXTS = {
-    "ru": {
-        "welcome": "🍻 Добро пожаловать!",
-        "menu": "🏠 Главное меню",
-        "no_profile": "Анкеты нет ❌",
-        "create_first": "Сначала создай анкету ❗",
-        "invalid_age": "Возраст должен быть числом 16–99",
-        "enter_name": "Введи имя 👤",
-        "enter_age": "Возраст? 🎂",
-        "enter_drinks": "Что ты пьёшь? 🍺",
-        "send_photo": "Пришли фото 📸",
-        "send_location": "Отправь геолокацию 📍",
-    }
+
+"ru":{
+
+"welcome":"🍻 Добро пожаловать!",
+"menu":"🏠 Главное меню",
+
+"create":"🍻 Создать анкету",
+"profile":"👤 Моя анкета",
+"near":"👀 Люди рядом",
+"map":"🗺 Карта",
+"settings":"⚙️ Настройки",
+
+"language":"🌍 Язык",
+"delete":"🗑 Удалить анкету",
+
+"back":"⬅️ Назад",
+
+"name":"👤 Введи имя",
+"age":"🎂 Введи возраст",
+
+"drinks":"🍺 Что ты пьёшь?",
+"photo":"📸 Пришли фото",
+
+"done":"✅ Готово",
+
+"delete_photo":"📷 Удалить последнее фото",
+
+"time":"⏳ Выбери время",
+
+"location":"📍 Отправь геолокацию",
+
+"created":"✅ Анкета создана!",
+
+"meet":"🍻 Встретиться",
+
+"report":"🚨 Жалоба"
+
+},
+
+"en":{
+
+"welcome":"🍻 Welcome!",
+
+"menu":"🏠 Main menu",
+
+"create":"🍻 Create profile",
+
+"profile":"👤 My profile",
+
+"near":"👀 Nearby people",
+
+"map":"🗺 Map",
+
+"settings":"⚙️ Settings",
+
+"language":"🌍 Language",
+
+"delete":"🗑 Delete profile",
+
+"back":"⬅️ Back",
+
+"name":"👤 Enter name",
+
+"age":"🎂 Enter age",
+
+"drinks":"🍺 What do you drink?",
+
+"photo":"📸 Send photos",
+
+"done":"✅ Done",
+
+"delete_photo":"📷 Delete last photo",
+
+"time":"⏳ Select time",
+
+"location":"📍 Send location",
+
+"created":"✅ Profile created!",
+
+"meet":"🍻 Meet",
+
+"report":"🚨 Report"
+
+},
+
+"de":{
+
+"welcome":"🍻 Willkommen!",
+
+"menu":"🏠 Hauptmenü",
+
+"create":"🍻 Profil erstellen",
+
+"profile":"👤 Mein Profil",
+
+"near":"👀 Personen in der Nähe",
+
+"map":"🗺 Karte",
+
+"settings":"⚙️ Einstellungen",
+
+"language":"🌍 Sprache",
+
+"delete":"🗑 Profil löschen",
+
+"back":"⬅️ Zurück",
+
+"name":"👤 Name eingeben",
+
+"age":"🎂 Alter eingeben",
+
+"drinks":"🍺 Was trinkst du?",
+
+"photo":"📸 Foto senden",
+
+"done":"✅ Fertig",
+
+"delete_photo":"📷 Letztes Foto löschen",
+
+"time":"⏳ Zeit wählen",
+
+"location":"📍 Standort senden",
+
+"created":"✅ Profil erstellt!",
+
+"meet":"🍻 Treffen",
+
+"report":"🚨 Melden"
+
+}
+
 }
 
 
-def t(user_id: int, key: str) -> str:
-    lang = user_lang.get(user_id, "ru")
-    return TEXTS.get(lang, TEXTS["ru"]).get(key, key)
+def t(uid: int, key: str):
+
+    lang = user_lang.get(uid, "ru")
+
+    if lang not in TEXTS:
+        lang = "ru"
+
+    return TEXTS[lang].get(
+        key,
+        TEXTS["ru"].get(key, key)
+    )
 
 # =========================================================
 # HELPERS
@@ -120,25 +247,72 @@ def parse_json_safe(data):
 # =========================================================
 @dp.message(F.text == "⚙️ Настройки")
 async def settings(message: Message):
-    await message.answer("⚙️ Настройки", reply_markup=kb_settings)
+    await message.answer(
+        t(
+            message.from_user.id,
+            "settings"
+        ),
 
-def main_menu_kb(user_id: int):
-    if has_active_post(user_id):
-        buttons = [
-            [KeyboardButton(text="👤 Моя анкета")],
-            [KeyboardButton(text="👀 Люди рядом")],
-            [KeyboardButton(text="🗺 Карта", web_app=WebAppInfo(url=WEBAPP_URL))],
-            [KeyboardButton(text="⚙️ Настройки")]
-        ]
+def main_menu_kb(uid):
+
+    if has_active_post(uid):
+
+        buttons=[
+
+[
+KeyboardButton(text=t(uid,"profile"))
+],
+
+[
+KeyboardButton(text=t(uid,"near"))
+],
+
+[
+KeyboardButton(
+text=t(uid,"map"),
+web_app=WebAppInfo(
+url=WEBAPP_URL
+)
+)
+],
+
+[
+KeyboardButton(text=t(uid,"settings"))
+]
+
+]
+
     else:
-        buttons = [
-            [KeyboardButton(text="🍻 Создать анкету")],
-            [KeyboardButton(text="👀 Люди рядом")],
-            [KeyboardButton(text="🗺 Карта", web_app=WebAppInfo(url=WEBAPP_URL))],
-            [KeyboardButton(text="⚙️ Настройки")]
-        ]
 
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+        buttons=[
+
+[
+KeyboardButton(text=t(uid,"create"))
+],
+
+[
+KeyboardButton(text=t(uid,"near"))
+],
+
+[
+KeyboardButton(
+text=t(uid,"map"),
+web_app=WebAppInfo(
+url=WEBAPP_URL
+)
+)
+],
+
+[
+KeyboardButton(text=t(uid,"settings"))
+]
+
+]
+
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True
+    )
 
 
 kb_back = ReplyKeyboardMarkup(
@@ -208,27 +382,74 @@ def reset_user(user_id: int):
 
 @dp.message(CommandStart())
 async def start(message: Message):
-    reset_user(message.from_user.id)
+
+    uid = message.from_user.id
+
+    reset_user(uid)
+
+    # ==========================
+    # ЗАГРУЗКА ЯЗЫКА
+    # ==========================
+
+    try:
+
+        user = (
+            sb.table("users")
+            .select("lang")
+            .eq("id", uid)
+            .execute()
+        )
+
+        if user.data:
+
+            lang = user.data[0].get("lang")
+
+            if lang:
+                user_lang[uid] = lang
+
+    except Exception as e:
+        print("language load error:", e)
+
+    # ==========================
+    # OPEN PROFILE
+    # ==========================
 
     parts = message.text.split(maxsplit=1)
+
     payload = parts[1] if len(parts) > 1 else None
 
     if payload and payload.startswith("post_"):
+
         post_id = payload.replace("post_", "")
 
-        post = sb.table("posts").select("*").eq("id", post_id).execute().data
+        post = (
+            sb.table("posts")
+            .select("*")
+            .eq("id", post_id)
+            .execute()
+            .data
+        )
 
         if post:
+
             p = post[0]
+
             await message.answer(
-                f"🍻 <b>{p['name']}</b>\n🎂 {p['age']}\n🍺 {p['drinks']}",
+                f"🍻 <b>{p['name']}</b>\n"
+                f"🎂 {p['age']}\n"
+                f"🍺 {p['drinks']}",
                 parse_mode="HTML"
             )
+
         return
 
+    # ==========================
+    # START SCREEN
+    # ==========================
+
     await message.answer(
-        "🍻 Добро пожаловать!",
-        reply_markup=main_menu_kb(message.from_user.id)
+        t(uid, "welcome"),
+        reply_markup=main_menu_kb(uid)
     )
 
 @dp.message(F.text == "🍻 Создать анкету")
@@ -242,7 +463,11 @@ async def create_start(message: Message):
     user_step[uid] = "name"
     user_data[uid] = {"photos": []}
 
-    await message.answer("👤 <b>Введи имя</b>", parse_mode="HTML", reply_markup=kb_back)
+    await message.answer(
+        t(uid,"name"),
+        parse_mode="HTML",
+        reply_markup=kb_back
+    )
 
 
 @dp.message(F.text == "⬅️ Назад")
@@ -250,7 +475,10 @@ async def back(message: Message):
     uid = message.from_user.id
     reset_user(uid)
 
-    await message.answer("⬅️ Назад", reply_markup=main_menu_kb(uid))
+    await message.answer(
+        t(uid,"back"),
+        reply_markup=main_menu_kb(uid)
+    )
 
 
 @dp.message(F.text == "🏠 Главное меню")
@@ -258,7 +486,10 @@ async def home(message: Message):
     uid = message.from_user.id
     reset_user(uid)
 
-    await message.answer("🏠 Главное меню", reply_markup=main_menu_kb(uid))
+    await message.answer(
+        t(uid,"menu"),
+        reply_markup=main_menu_kb(uid)
+    )
 
 
 # =========================================================
@@ -284,7 +515,9 @@ async def steps_handler(message: Message):
         user_data[uid]["name"] = text
         user_step[uid] = "age"
 
-        await message.answer("🎂 Введи возраст")
+        await message.answer(
+            t(uid,"age")
+        )
         return
 
     # ---------------- AGE
@@ -301,7 +534,9 @@ async def steps_handler(message: Message):
         user_data[uid]["age"] = age
         user_step[uid] = "drinks"
 
-        await message.answer("🍺 Что ты пьёшь?")
+        await message.answer(
+            t(uid,"drinks")
+        )
         return
 
     # ---------------- DRINKS
@@ -310,7 +545,7 @@ async def steps_handler(message: Message):
         user_step[uid] = "photo"
 
         await message.answer(
-            "📸 Пришли фото (до 3)",
+            t(uid,"photo"),
             reply_markup=kb_photo
         )
         return
@@ -369,7 +604,7 @@ async def steps_handler(message: Message):
             user_step[uid] = "time"
 
             await message.answer(
-                "⏳ Выбери время",
+                t(uid,"time"),
                 reply_markup=kb_time
             )
             return
@@ -392,7 +627,10 @@ async def steps_handler(message: Message):
         user_data[uid]["ttl"] = mapping[text]
         user_step[uid] = "location"
 
-        await message.answer("📍 Отправь геолокацию", reply_markup=kb_location)
+        await message.answer(
+            t(uid,"location"),
+            reply_markup=kb_location
+        )
         return
 
     # ---------------- LOCATION + SAVE
@@ -420,7 +658,7 @@ async def steps_handler(message: Message):
         reset_user(uid)
 
         await message.answer(
-            "✅ <b>Анкета создана!</b>\nТы теперь виден другим 👀",
+            t(uid,"created"),
             parse_mode="HTML",
             reply_markup=main_menu_kb(uid)
         )
@@ -861,15 +1099,42 @@ async def report_user(call: CallbackQuery):
 
     await call.answer("🚨 Жалоба отправлена")
 
-def set_lang(uid, text):
-    if text == "Русский":
-        user_lang[uid] = "ru"
-    elif text == "Українська":
-        user_lang[uid] = "ua"
-    elif text == "English":
-        user_lang[uid] = "en"
-    elif text == "Deutsch":
-        user_lang[uid] = "de"
+def set_lang(uid,text):
+
+    langs={
+
+"Русский":"ru",
+
+"Українська":"ua",
+
+"English":"en",
+
+"Deutsch":"de"
+
+}
+
+    lang=langs.get(text)
+
+    if not lang:
+        return
+
+    user_lang[uid]=lang
+
+    try:
+
+        sb.table(
+            "users"
+        ).upsert({
+
+            "id":uid,
+
+            "lang":lang
+
+        }).execute()
+
+    except Exception as e:
+
+        print(e)
 
 
 @dp.message(F.text.in_(["Русский", "Українська", "English", "Deutsch"]))

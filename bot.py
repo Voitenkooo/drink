@@ -193,7 +193,6 @@ kb_photo = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
-)
 
 # =========================================================
 # CLEAN STEPS RESET
@@ -368,8 +367,12 @@ async def steps_handler(message: Message):
                 return
 
             user_step[uid] = "time"
-           await message.answer("⏳ Выбери время", reply_markup=kb_time)
-           return
+
+            await message.answer(
+                "⏳ Выбери время",
+                reply_markup=kb_time
+            )
+            return
 
         await message.answer("📸 Отправь фото или нажми кнопку ниже", reply_markup=kb_photo)
         return

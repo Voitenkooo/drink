@@ -3,102 +3,155 @@ import math
 import json
 from datetime import datetime, timedelta, timezone
 
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart, CommandObject
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import CommandStart, Command
 from aiogram.types import (
     Message,
+    CallbackQuery,
     ReplyKeyboardMarkup,
     KeyboardButton,
-    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
     WebAppInfo
 )
 
 from supabase import create_client
 
-# ---------------- CONFIG
+# =========================================================
+# CONFIG (⚠️ ЗАМЕНИ СЕКРЕТЫ И ПЕРЕВЫПУСТИ ИХ!)
+# =========================================================
+
 TOKEN = "8806146438:AAGLQE6KJaoPk5TITgpo4k_ushrNL3Kn_hg"
 SUPABASE_URL = "https://snmlpsaieitdtndejyeb.supabase.co"
 SUPABASE_KEY = "sb_secret_A0_2qsM_Vl_rozNLrgjBVQ_2ySF3gjq"
 WEBAPP_URL = "https://voitenkooo.github.io/drink"
 
+ADMIN_IDS = {6859689857}
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# ---------------- STATE
+# =========================================================
+# POST CHECK (FIX CRITICAL ERROR)
+# =========================================================
+
+def has_active_post(user_id: int) -> bool:
+    try:
+        res = sb.table("posts") \
+            .select("id") \
+            .eq("user_id", user_id) \
+            .eq("active", True) \
+            .execute()
+
+        return bool(res.data)
+    except Exception as e:
+        print("has_active_post error:", e)
+        return False
+
+# =========================================================
+# STATE (в будущем заменим на FSM, но сейчас оставим)
+# =========================================================
+
 user_step = {}
 user_data = {}
 user_lang = {}
 
-def btn(user_id, key):
-    lang = user_lang.get(user_id, "ru")
-    return texts[key][lang]
-    
-texts = {
-    "menu": {
-        "ru": "🏠 Главное меню",
-        "ua": "🏠 Головне меню",
-        "en": "🏠 Main menu",
-    },
-    "create": {
-        "ru": "🍻 Создать заявку",
-        "ua": "🍻 Створити заявку",
-        "en": "🍻 Create request",
-    },
-    "nearby": {
-        "ru": "👀 Люди рядом",
-        "ua": "👀 Люди поруч",
-        "en": "👀 Nearby people",
-    },
-    "no_profile": {
-        "ru": "❗ Сначала создай заявку",
-        "ua": "❗ Спочатку створи анкету",
-        "en": "❗ Create profile first",
-    },
-    "profile_created": {
-        "ru": "✅ Анкета создана!",
-        "ua": "✅ Анкету створено!",
-        "en": "✅ Profile created!",
-    },
-    "age_error": {
-        "ru": "Возраст только числом",
-        "ua": "Вік тільки числом",
-        "en": "Age must be a number",
-    },
-    "settings": {
-        "ru": "⚙️ Настройки",
-        "ua": "⚙️ Налаштування",
-        "en": "⚙️ Settings",
-    },
-    "language": {
-        "ru": "🌍 Язык установлен",
-        "ua": "🌍 Мову встановлено",
-        "en": "🌍 Language set",
+# =========================================================
+# I18N (простая система переводов)
+# =========================================================
+
+LANGS = ["ru", "ua", "en", "de"]
+
+TEXTS = {
+    "ru": {
+        "welcome": "🍻 Добро пожаловать!",
+        "menu": "🏠 Главное меню",
+        "no_profile": "Анкеты нет ❌",
+        "create_first": "Сначала создай анкету ❗",
+        "invalid_age": "Возраст должен быть числом 16–99",
+        "enter_name": "Введи имя 👤",
+        "enter_age": "Возраст? 🎂",
+        "enter_drinks": "Что ты пьёшь? 🍺",
+        "send_photo": "Пришли фото 📸",
+        "send_location": "Отправь геолокацию 📍",
     }
 }
 
-def t(user_id, key):
+
+def t(user_id: int, key: str) -> str:
     lang = user_lang.get(user_id, "ru")
-    return texts.get(key, {}).get(lang, key)
+    return TEXTS.get(lang, TEXTS["ru"]).get(key, key)
 
-# ---------------- CHECK ACTIVE POST
-def has_active_post(user_id):
-    res = sb.table("posts") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .eq("active", True) \
-        .execute().data
-    return len(res) > 0
+# =========================================================
+# HELPERS
+# =========================================================
 
-# ---------------- KEYBOARDS
-kb_nav = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="⬅️ Назад"), KeyboardButton(text="🏠 Главное меню")]],
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def parse_json_safe(data):
+    if isinstance(data, list):
+        return data
+    if isinstance(data, str):
+        try:
+            return json.loads(data)
+        except:
+            return []
+    return []
+
+# =========================================================
+# UI KEYBOARDS (КРАСИВЫЕ И СТРУКТУРИРОВАННЫЕ)
+# =========================================================
+@dp.message(F.text == "⚙️ Настройки")
+async def settings(message: Message):
+    await message.answer("⚙️ Настройки", reply_markup=kb_settings)
+
+def main_menu_kb(user_id: int):
+    if has_active_post(user_id):
+        buttons = [
+            [KeyboardButton(text="👤 Моя анкета")],
+            [KeyboardButton(text="👀 Люди рядом")],
+            [KeyboardButton(text="🗺 Карта", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [KeyboardButton(text="⚙️ Настройки")]
+        ]
+    else:
+        buttons = [
+            [KeyboardButton(text="🍻 Создать анкету")],
+            [KeyboardButton(text="👀 Люди рядом")],
+            [KeyboardButton(text="🗺 Карта", web_app=WebAppInfo(url=WEBAPP_URL))],
+            [KeyboardButton(text="⚙️ Настройки")]
+        ]
+
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+
+
+kb_back = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="⬅️ Назад"), KeyboardButton(text="🏠 Главное меню")]
+    ],
     resize_keyboard=True
 )
 
 kb_settings = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌍 Язык")],
+        [KeyboardButton(text="🗑 Удалить анкету")],
         [KeyboardButton(text="⬅️ Назад"), KeyboardButton(text="🏠 Главное меню")]
     ],
     resize_keyboard=True
@@ -115,9 +168,9 @@ kb_lang = ReplyKeyboardMarkup(
 
 kb_time = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Анкета на 15 минут")],
-        [KeyboardButton(text="Анкета на 30 минут")],
-        [KeyboardButton(text="Анкета на 60 минут")],
+        [KeyboardButton(text="15 мин")],
+        [KeyboardButton(text="30 мин")],
+        [KeyboardButton(text="60 мин")],
         [KeyboardButton(text="⬅️ Назад"), KeyboardButton(text="🏠 Главное меню")]
     ],
     resize_keyboard=True
@@ -131,470 +184,707 @@ kb_location = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# ---------------- MAIN MENU
-def get_kb(user_id):
-    if has_active_post(user_id):
-        return ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="👤 Моя анкета")],
-                [KeyboardButton(text=btn(user_id, "nearby"))],
-                [KeyboardButton(text="🗺 Карта", web_app=WebAppInfo(url=WEBAPP_URL))],
-                [KeyboardButton(text="⚙️ Настройки")]
-            ],
-            resize_keyboard=True
-        )
+# =========================================================
+# CLEAN STEPS RESET
+# =========================================================
 
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=btn(user_id, "create"))],
-            [KeyboardButton(text=btn(user_id, "nearby"))],
-            [KeyboardButton(text="🗺 Карта", web_app=WebAppInfo(url=WEBAPP_URL))],
-            [KeyboardButton(text="⚙️ Настройки")]
-        ],
-        resize_keyboard=True
-    )
+def reset_user(user_id: int):
+    user_step.pop(user_id, None)
+    user_data.pop(user_id, None)
 
-# ---------------- DISTANCE
-def dist(lat1, lon1, lat2, lon2):
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
+# =========================================================
+# START
+# =========================================================
 
-    a = (
-        math.sin(dlat / 2) ** 2 +
-        math.cos(math.radians(lat1)) *
-        math.cos(math.radians(lat2)) *
-        math.sin(dlon / 2) ** 2
-    )
+@dp.message(CommandStart())
+async def start(message: Message):
+    reset_user(message.from_user.id)
 
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    parts = message.text.split(maxsplit=1)
+    payload = parts[1] if len(parts) > 1 else None
 
-def send_meet_request(from_user, to_user):
+    if payload and payload.startswith("post_"):
+        post_id = payload.replace("post_", "")
 
-    exists = sb.table("matches") \
-        .select("*") \
-        .eq("user1", from_user) \
-        .eq("user2", to_user) \
-        .execute()
+        post = sb.table("posts").select("*").eq("id", post_id).execute().data
 
-    if exists.data:
-        return False
-
-    sb.table("matches").insert({
-        "user1": from_user,
-        "user2": to_user,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }).execute()
-
-    return True
-
-# ---------------- START
-@dp.message(CommandStart(deep_link=True))
-async def start(message: Message, command: CommandObject):
-
-    data = command.args
-
-    if data and data.startswith("chat_"):
-        other_user_id = data.split("_")[1]
-
-        await message.answer(
-            f"💬 Чат открыт с пользователем {other_user_id}"
-        )
+        if post:
+            p = post[0]
+            await message.answer(
+                f"🍻 <b>{p['name']}</b>\n🎂 {p['age']}\n🍺 {p['drinks']}",
+                parse_mode="HTML"
+            )
         return
 
     await message.answer(
         "🍻 Добро пожаловать!",
-        reply_markup=get_kb(message.from_user.id)
+        reply_markup=main_menu_kb(message.from_user.id)
     )
 
-@dp.message()
-async def handler(message: Message):
+@dp.message(F.text == "🍻 Создать анкету")
+async def create_start(message: Message):
+    uid = message.from_user.id
 
-    user_id = message.from_user.id
+    if has_active_post(uid):
+        await message.answer("❗ У тебя уже есть активная анкета")
+        return
+
+    user_step[uid] = "name"
+    user_data[uid] = {"photos": []}
+
+    await message.answer("👤 <b>Введи имя</b>", parse_mode="HTML", reply_markup=kb_back)
+
+
+@dp.message(F.text == "⬅️ Назад")
+async def back(message: Message):
+    uid = message.from_user.id
+    reset_user(uid)
+
+    await message.answer("⬅️ Назад", reply_markup=main_menu_kb(uid))
+
+
+@dp.message(F.text == "🏠 Главное меню")
+async def home(message: Message):
+    uid = message.from_user.id
+    reset_user(uid)
+
+    await message.answer("🏠 Главное меню", reply_markup=main_menu_kb(uid))
+
+
+# =========================================================
+# STEP HANDLER (ЕДИНЫЙ — ЭТО КРИТИЧНО)
+# =========================================================
+
+@dp.message(lambda m: m.from_user.id in user_step)
+async def steps_handler(message: Message):
+    uid = message.from_user.id
     text = message.text or ""
 
-    step = user_step.get(user_id)
+    step = user_step.get(uid)
 
-    if step is None and (message.photo or message.location):
-        await message.answer("Сначала выбери действие из меню")
+    if step is None:
         return
 
-    # ---------------- MAIN MENU
-    if text == "🏠 Главное меню":
-        user_step.pop(user_id, None)
-        user_data.pop(user_id, None)
-        await message.answer(t(user_id, "menu"), reply_markup=get_kb(user_id))
-        return
-
-    # ---------------- SETTINGS
-    if text == "⚙️ Настройки":
-        await message.answer(btn(user_id, "settings"), reply_markup=kb_settings)
-        return
-
-    if text == "🌍 Язык":
-        await message.answer(btn(user_id, "language"), reply_markup=kb_lang)
-        return
-
-
-    lang_map = {
-        "Русский": "ru",
-        "Українська": "ua",
-        "English": "en",
-        "Deutsch": "en"
-    }
-
-    if text in lang_map:
-        user_lang[user_id] = lang_map[text]
-        await message.answer("🌍 Язык установлен", reply_markup=get_kb(user_id))
-        return
-
-    # CREATE POST START
-    if text == btn(user_id, "create"):
-
-        if has_active_post(user_id):
-            await message.answer("❗ У тебя уже есть активная анкета")
-            return
-
-        user_step[user_id] = "name"
-        user_data[user_id] = {}
-
-        await message.answer("👤 Введи имя", reply_markup=kb_nav)
-        return
-
-    # ---------------- STEPS
-    step = user_step.get(user_id)
-
+    # ---------------- NAME
     if step == "name":
-
-        if any(c.isdigit() for c in text):
-            await message.answer("Имя только буквами")
+        if any(i.isdigit() for i in text):
+            await message.answer("❌ Имя не должно содержать цифры")
             return
 
-        user_data[user_id]["name"] = text
-        user_step[user_id] = "age"
+        user_data[uid]["name"] = text
+        user_step[uid] = "age"
 
-        await message.answer("🎂 Возраст?")
+        await message.answer("🎂 Введи возраст")
         return
 
+    # ---------------- AGE
     if step == "age":
-
         if not text.isdigit():
-            await message.answer(t(user_id, "age_error"))
+            await message.answer("❌ Только число")
             return
 
         age = int(text)
-
-        if age < 18 or age > 99:
-            await message.answer("Возраст 18–99")
+        if age < 16 or age > 99:
+            await message.answer("❌ Возраст 16–99")
             return
 
-        user_data[user_id]["age"] = age
-        user_step[user_id] = "drinks"
+        user_data[uid]["age"] = age
+        user_step[uid] = "drinks"
 
-        await message.answer("🍺 Что пьёшь?")
+        await message.answer("🍺 Что ты пьёшь?")
         return
 
+    # ---------------- DRINKS
     if step == "drinks":
+        user_data[uid]["drinks"] = text
+        user_step[uid] = "photo"
 
-        user_data[user_id]["drinks"] = text
-        user_step[user_id] = "photo"
-
-        await message.answer("📸 Пришли фото")
+        await message.answer("📸 Пришли фото (до 3)")
         return
 
+    # ---------------- PHOTO
     if step == "photo":
+        text = (message.text or "").strip().lower()
 
-        if not message.photo:
-            await message.answer("Пришли фото")
+        if message.photo:
+            user_data[uid]["photos"].append(message.photo[-1].file_id)
+            await message.answer(f"📸 Добавлено ({len(user_data[uid]['photos'])}/3)")
             return
 
-        user_data[user_id]["photo"] = message.photo[-1].file_id
-        user_step[user_id] = "time"
+        if text in ["готово", "done", "finish"]:
+            photos = user_data[uid]["photos"]
 
-        await message.answer("⏳ Выбери время", reply_markup=kb_time)
+            if len(photos) == 0:
+                await message.answer("❌ Добавь хотя бы 1 фото")
+                return
+
+            user_step[uid] = "time"
+            await message.answer("⏳ Выбери время", reply_markup=kb_time)
+            return
+
+        await message.answer("📸 Отправь фото или напиши 'готово'")
         return
 
+    # ---------------- TIME
     if step == "time":
-
-        mapping = {"15 минут": 15, "30 минут": 30, "60 минут": 60}
+        mapping = {
+            "15 мин": 15,
+            "30 мин": 30,
+            "60 мин": 60
+        }
 
         if text not in mapping:
-            await message.answer("Выбери кнопку")
+            await message.answer("❌ Выбери кнопку")
             return
 
-        user_data[user_id]["ttl"] = mapping[text]
-        user_step[user_id] = "location"
+        user_data[uid]["ttl"] = mapping[text]
+        user_step[uid] = "location"
 
         await message.answer("📍 Отправь геолокацию", reply_markup=kb_location)
         return
 
+    # ---------------- LOCATION + SAVE
     if step == "location":
-
         if not message.location:
-            await message.answer("Используй геолокацию")
+            await message.answer("📍 Используй кнопку геолокации")
             return
 
-        data = user_data[user_id]
+        data = user_data[uid]
 
         sb.table("posts").insert({
-            "user_id": user_id,
-            "username": message.from_user.username,
+            "user_id": uid,
             "name": data["name"],
             "age": data["age"],
             "drinks": data["drinks"],
-            "photo": data.get("photo"),
+            "photos": json.dumps(data["photos"]),
             "lat": message.location.latitude,
             "lon": message.location.longitude,
             "active": True,
             "expires_at": (
-                datetime.now(timezone.utc) +
-                timedelta(minutes=data["ttl"])
+                datetime.now(timezone.utc) + timedelta(minutes=data["ttl"])
             ).isoformat()
         }).execute()
 
-        user_step.pop(user_id, None)
-        user_data.pop(user_id, None)
+        reset_user(uid)
 
-        await message.answer("✅ Анкета создана!", reply_markup=get_kb(user_id))
+        await message.answer(
+            "✅ <b>Анкета создана!</b>\nТы теперь виден другим 👀",
+            parse_mode="HTML",
+            reply_markup=main_menu_kb(uid)
+        )
         return
 
-    # ---------------- PEOPLE NEARBY (FIXED)
-    if text == "👀 Люди рядом":
+# =========================================================
+# MY PROFILE (КРАСИВЫЙ + ИНФО + УПРАВЛЕНИЕ)
+# =========================================================
 
-        me = sb.table("posts") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("active", True) \
-            .execute().data
+def profile_kb(post_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📷 Фото", callback_data=f"photos_{post_id}")
+        ],
+        [
+            InlineKeyboardButton(text="⏳ Продлить", callback_data=f"extend_{post_id}")
+        ],
+        [
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_{post_id}")
+        ]
+    ])
 
-        if not me:
-            await message.answer("❗ Сначала создай заявку")
-            return
 
-        me = me[0]
+@dp.message(F.text == "👤 Моя анкета")
+async def my_profile(message: Message):
+    uid = message.from_user.id
 
-        posts = sb.table("posts") \
-            .select("*") \
-            .eq("active", True) \
-            .execute().data
+    post = sb.table("posts") \
+        .select("*") \
+        .eq("user_id", uid) \
+        .eq("active", True) \
+        .execute().data
 
-        found = False
-
-        for p in posts:
-
-            if p["user_id"] == user_id:
-                continue
-
-            if not p.get("lat") or not p.get("lon"):
-                continue
-
-            d = dist(me["lat"], me["lon"], p["lat"], p["lon"])
-
-            found = True
-
-            caption = f"""
-🍻 АНКЕТА
-
-👤 {p['name']}
-🎂 {p['age']} лет
-🍺 {p['drinks']}
-
-📍 {round(d, 1)} км от тебя
-"""
-
-            kb_like = types.InlineKeyboardMarkup(
-                inline_keyboard=[[
-                    types.InlineKeyboardButton(
-                        text="🍻 Предложить встречу",
-                        callback_data=f"meet_{p['id']}"
-                    ),
-                    types.InlineKeyboardButton(
-                        text="👎",
-                        callback_data="skip"
-                    ),
-                    types.InlineKeyboardButton(
-                        text="🚨",
-                        callback_data=f"report_{p['user_id']}"
-                    )
-                ]]
-            )
-
-            if p.get("photo"):
-                await message.answer_photo(p["photo"], caption=caption, reply_markup=kb_like)
-            else:
-                await message.answer(caption, reply_markup=kb_like)
-
-        if not found:
-            await message.answer("📍 Пока никого нет")
-
+    if not post:
+        await message.answer("❌ У тебя нет активной анкеты")
         return
 
-    # ---------------- MY PROFILE
-    if message.text == "👤 Моя анкета":
+    p = post[0]
 
-        post = sb.table("posts") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("active", True) \
-            .execute().data
+    expires = datetime.fromisoformat(p["expires_at"])
 
-        if not post:
-            await message.answer("❌ Анкеты нет")
-            return
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
 
-        p = post[0]
+    left = expires - datetime.now(timezone.utc)
+    mins = max(0, int(left.total_seconds() // 60))
 
-        expires = datetime.fromisoformat(p["expires_at"]).replace(tzinfo=timezone.utc)
-        left = expires - datetime.now(timezone.utc)
-        minutes = max(0, int(left.total_seconds() // 60))
+    caption = (
+        "🍻 <b>ТВОЯ АНКЕТА</b>\n\n"
+        f"👤 Имя: <b>{p['name']}</b>\n"
+        f"🎂 Возраст: <b>{p['age']}</b>\n"
+        f"🍺 Напиток: <b>{p['drinks']}</b>\n"
+        f"⏳ Осталось: <b>{mins} мин</b>\n"
+    )
 
-        caption = f"""
+    photos = parse_json_safe(p.get("photos"))
 
-🍻 ТВОЯ АНКЕТА
-
-👤 Имя: {p.get('name')}
-🎂 Возраст: {p.get('age')}
-🍺 Напиток: {p.get('drinks')}
-
-⏳ Осталось: {minutes} мин
-📍 Статус: активна
-"""
-
-        if p.get("photo"):
-            await message.answer_photo(photo=p["photo"], caption=caption)
-        else:
-            await message.answer(caption)
-
-        return
-
-# ---------------- CALLBACKS
-@dp.callback_query()
-async def cb(call: CallbackQuery):
-
-    user_id = call.from_user.id
-    data = call.data
-
-    # SKIP
-    if data == "skip":
-        await call.answer("Следующий")
-        return
-
-    # REPORT
-    if data.startswith("report_"):
-
-        reported = int(data.split("_")[1])
-
-        sb.table("reports").insert({
-            "reporter": user_id,
-            "reported": reported,
-            "reason": "user_report"
-        }).execute()
-
-        await call.answer("Жалоба отправлена")
-        return
-
-    if data.startswith("meet_"):
-
-        post_id = int(data.split("_")[1])
-
-        post = (
-            sb.table("posts")
-            .select("*")
-            .eq("id", post_id)
-            .execute()
-            .data
+    if photos:
+        await message.answer_photo(
+            photo=photos[0],
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=profile_kb(p["id"])
+        )
+    else:
+        await message.answer(
+            caption,
+            parse_mode="HTML",
+            reply_markup=profile_kb(p["id"])
         )
 
-        if not post:
-            await call.answer("Не найдено")
-            return
 
-        owner = post[0]["user_id"]
+# =========================================================
+# DELETE PROFILE
+# =========================================================
 
-        created = send_meet_request(
-            from_user=user_id,
-            to_user=owner
-        )
+@dp.callback_query(F.data.startswith("delete_"))
+async def delete_profile(call: CallbackQuery):
+    uid = call.from_user.id
+    post_id = int(call.data.split("_")[1])
 
-        if not created:
-            await call.answer("Запрос уже отправлен")
-            return
+    sb.table("posts") \
+        .update({"active": False}) \
+        .eq("id", post_id) \
+        .eq("user_id", uid) \
+        .execute()
 
-        kb = types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text="🍻 Иду",
-                        callback_data=f"accept_{user_id}"
-                    ),
-                    types.InlineKeyboardButton(
-                        text="❌ Нет",
-                        callback_data=f"decline_{user_id}"
-                    )
-                ]
+    await call.answer("🗑 Удалено")
+
+    await bot.send_message(uid, "🗑 Анкета удалена")
+
+
+# =========================================================
+# EXTEND PROFILE (ВЫБОР ВРЕМЕНИ)
+# =========================================================
+
+extend_choice = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="15 мин"), KeyboardButton(text="30 мин")],
+        [KeyboardButton(text="60 мин"), KeyboardButton(text="120 мин")],
+        [KeyboardButton(text="⬅️ Назад")]
+    ],
+    resize_keyboard=True
+)
+
+extend_cache = {}
+
+
+@dp.callback_query(F.data.startswith("extend_"))
+async def extend_profile(call: CallbackQuery):
+    uid = call.from_user.id
+    post_id = int(call.data.split("_")[1])
+
+    extend_cache[uid] = post_id
+
+    await bot.send_message(
+        uid,
+        "⏳ Выбери время продления:",
+        reply_markup=extend_choice
+    )
+
+
+@dp.message(F.text.in_(["15 мин", "30 мин", "60 мин", "120 мин"]))
+async def extend_time(message: Message):
+    if message.from_user.id in user_step:
+        return
+            
+    uid = message.from_user.id
+
+    post_id = extend_cache.get(uid)
+    if not post_id:
+        return
+
+    mapping = {
+        "15 мин": 15,
+        "30 мин": 30,
+        "60 мин": 60,
+        "120 мин": 120
+    }
+
+    minutes = mapping[message.text]
+
+    sb.table("posts") \
+        .update({
+            "expires_at": (
+                datetime.now(timezone.utc) + timedelta(minutes=minutes)
+            ).isoformat(),
+            "active": True
+        }) \
+        .eq("id", post_id) \
+        .execute()
+
+    extend_cache.pop(uid, None)
+
+    await message.answer(f"⏳ Продлено на {minutes} мин", reply_markup=main_menu_kb(uid))
+
+
+# =========================================================
+# PHOTOS VIEW (FIXED)
+# =========================================================
+
+@dp.callback_query(F.data.startswith("photos_"))
+async def show_photos(call: CallbackQuery):
+    post_id = int(call.data.split("_")[1])
+
+    post = sb.table("posts") \
+        .select("photos") \
+        .eq("id", post_id) \
+        .execute().data
+
+    if not post:
+        await call.answer("Не найдено")
+        return
+
+    photos = json.loads(post[0].get("photos") or "[]")
+
+    if len(photos) <= 1:
+        await call.answer("Нет дополнительных фото")
+        return
+
+    for ph in photos[1:]:
+        await bot.send_photo(call.from_user.id, ph)
+
+    await call.answer()
+
+
+# =========================================================
+# PEOPLE NEARBY (FIXED + STABLE)
+# =========================================================
+
+@dp.message(F.text == "👀 Люди рядом")
+async def people_nearby(message: Message):
+    uid = message.from_user.id
+
+    me = sb.table("posts") \
+        .select("*") \
+        .eq("user_id", uid) \
+        .eq("active", True) \
+        .execute().data
+
+    if not me:
+        await message.answer("❗ Сначала создай анкету")
+        return
+
+    me = me[0]
+
+    posts = sb.table("posts") \
+        .select("*") \
+        .eq("active", True) \
+        .execute().data
+
+    found = False
+
+    for p in posts:
+        if p["user_id"] == uid:
+            continue
+
+        if p.get("lat") is None or p.get("lon") is None:
+            continue
+
+        d = haversine(me["lat"], me["lon"], p["lat"], p["lon"])
+
+        if d > 10:
+            continue
+
+        found = True
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🍻 Встретиться", callback_data=f"meet_{p['id']}"),
+                InlineKeyboardButton(text="📷 Фото", callback_data=f"photos_{p['id']}"),
+            ],
+            [
+                InlineKeyboardButton(text="🚨 Жалоба", callback_data=f"report_{p['id']}"),
+                InlineKeyboardButton(text="👎", callback_data="skip")
             ]
+        ])
+
+        photos = json.loads(p.get("photos") or "[]")
+
+        text = (
+            "🍻 <b>АНКЕТА</b>\n\n"
+            f"👤 {p['name']}\n"
+            f"🎂 {p['age']}\n"
+            f"🍺 {p['drinks']}\n"
+            f"📍 {round(d, 1)} км"
         )
 
-        await bot.send_message(
-            owner,
-            "🍻 Кто-то хочет встретиться",
+        if photos:
+            await message.answer_photo(
+                photo=photos[0],
+                caption=text,
+                parse_mode="HTML",
+                reply_markup=kb
+            )
+        else:
+            await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+    if not found:
+        await message.answer("📍 Никого рядом нет")
+
+@dp.callback_query(F.data.startswith("meet_"))
+async def meet_request(call: CallbackQuery):
+    uid = call.from_user.id
+    post_id = int(call.data.split("_")[1])
+
+    post = sb.table("posts") \
+        .select("*") \
+        .eq("id", post_id) \
+        .execute().data
+
+    if not post:
+        await call.answer("Не найдено")
+        return
+
+    owner = post[0]["user_id"]
+
+    if owner == uid:
+        await call.answer("Это твоя анкета")
+        return
+
+    exists = sb.table("matches") \
+        .select("*") \
+        .or_(
+            f"and(user1.eq.{uid},user2.eq.{owner}),and(user1.eq.{owner},user2.eq.{uid})"
+        ) \
+        .execute().data
+
+    if exists:
+        await call.answer("Уже отправлено")
+        return
+
+    sb.table("matches").insert({
+        "user1": uid,
+        "user2": owner,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }).execute()
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🍻 Принять", callback_data=f"accept_{uid}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"decline_{uid}")
+        ]
+    ])
+
+    await bot.send_message(owner, "🍻 Кто-то хочет встретиться!", reply_markup=kb)
+
+    await call.answer("Запрос отправлен")
+
+
+# =========================================================
+# ACCEPT / DECLINE FIXED
+# =========================================================
+
+@dp.callback_query(F.data.startswith("accept_"))
+async def accept_meet(call: CallbackQuery):
+    uid = call.from_user.id
+    other = int(call.data.split("_")[1])
+
+    match = sb.table("matches") \
+        .select("*") \
+        .or_(
+            f"and(user1.eq.{other},user2.eq.{uid})"
+        ) \
+        .eq("status", "pending") \
+        .execute().data
+
+    if not match:
+        await call.answer("Нет запроса", show_alert=True)
+        return
+
+    sb.table("matches") \
+        .update({"status": "accepted"}) \
+        .eq("user1", other) \
+        .eq("user2", uid) \
+        .execute()
+
+    await bot.send_message(other, "🎉 Встреча принята!")
+    await bot.send_message(uid, "🎉 Ты подтвердил встречу")
+
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("decline_"))
+async def decline_meet(call: CallbackQuery):
+    await call.answer("Отклонено")
+
+
+@dp.message(Command("admin"))
+async def admin(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("⛔ Нет доступа")
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👤 Users", callback_data="adm_users")],
+        [InlineKeyboardButton(text="📄 Posts", callback_data="adm_posts")],
+        [InlineKeyboardButton(text="🚨 Reports", callback_data="adm_reports")],
+        [InlineKeyboardButton(text="🤝 Matches", callback_data="adm_matches")]
+    ])
+
+    await message.answer("⚙️ Admin panel", reply_markup=kb)
+
+
+@dp.callback_query(F.data == "adm_users")
+async def adm_users(call: CallbackQuery):
+    posts = sb.table("posts").select("user_id").execute().data
+    users = list(set([p["user_id"] for p in posts]))
+
+    await call.message.answer("👤 USERS:\n" + "\n".join(map(str, users[:50])))
+    await call.answer()
+
+
+@dp.callback_query(F.data == "adm_posts")
+async def adm_posts(call: CallbackQuery):
+    posts = sb.table("posts").select("*").limit(10).execute().data
+
+    for p in posts:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗑 Delete", callback_data=f"adm_del_{p['id']}")]
+        ])
+
+        await call.message.answer(
+            f"👤 {p['name']} | 🎂 {p['age']} | 🍺 {p['drinks']}",
             reply_markup=kb
         )
 
-        await call.answer("Отправлено")
+    await call.answer()
+
+
+@dp.callback_query(F.data.startswith("adm_del_"))
+async def adm_delete(call: CallbackQuery):
+    post_id = int(call.data.split("_")[2])
+
+    sb.table("posts") \
+        .delete() \
+        .eq("id", post_id) \
+        .execute()
+
+    await call.answer("Удалено")
+
+
+@dp.callback_query(F.data == "adm_reports")
+async def adm_reports(call: CallbackQuery):
+    reports = sb.table("reports").select("*").limit(20).execute().data
+
+    text = "🚨 REPORTS:\n\n"
+    for r in reports:
+        text += f"{r['reporter']} ➝ {r['reported']}\n"
+
+    await call.message.answer(text)
+    await call.answer()
+
+
+@dp.callback_query(F.data == "adm_matches")
+async def adm_matches(call: CallbackQuery):
+    matches = sb.table("matches").select("*").limit(20).execute().data
+
+    text = "🤝 MATCHES:\n\n"
+    for m in matches:
+        text += f"{m['user1']} ↔ {m['user2']} ({m['status']})\n"
+
+    await call.message.answer(text)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("report_"))
+async def report_user(call: CallbackQuery):
+    uid = call.from_user.id
+    reported = int(call.data.split("_")[1])
+
+    sb.table("reports").insert({
+        "reporter": uid,
+        "reported": reported,
+        "reason": "user_report",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }).execute()
+
+    await call.answer("🚨 Жалоба отправлена")
+
+def set_lang(uid, text):
+    if text == "Русский":
+        user_lang[uid] = "ru"
+    elif text == "Українська":
+        user_lang[uid] = "ua"
+    elif text == "English":
+        user_lang[uid] = "en"
+    elif text == "Deutsch":
+        user_lang[uid] = "de"
+
+
+@dp.message(F.text.in_(["Русский", "Українська", "English", "Deutsch"]))
+async def lang(message: Message):
+    set_lang(message.from_user.id, message.text)
+    await message.answer("🌍 Язык установлен", reply_markup=main_menu_kb(message.from_user.id))
+
+@dp.message(F.web_app_data)
+async def webapp_handler(message: Message):
+    import json
+    try:
+        data = json.loads(message.web_app_data.data)
+    except:
+        await message.answer("❌ Ошибка данных WebApp")
         return
 
-    # ACCEPT
-    if data.startswith("accept_"):
+    uid = message.from_user.id
+    action = data.get("action")
 
-        other = int(data.split("_")[1])
+    # ---------------- MEET
+    if action == "meet":
+        post_id = data.get("post_id")
 
-        BOT_USERNAME = "drink_nearby_bot"
-        link = f"https://t.me/{BOT_USERNAME}?start=chat_{other}"
+        await message.answer("🍻 Запрос на встречу отправлен!")
 
-        await bot.send_message(
-            other,
-            f"🎉 Встреча подтверждена!\n💬 Чат: {link}"
-        )
-
-        await bot.send_message(
-            user_id,
-            "🎉 Встреча подтверждена"
-        )
-
-        await call.answer("Подтверждено")
+        # тут можно сразу логировать или делать match request
         return
 
-    # DECLINE
-    if data.startswith("decline_"):
+    # ---------------- REPORT
+    if action == "report":
+        reported = data.get("user_id")
 
-        await call.answer("Отклонено")
+        sb.table("reports").insert({
+            "reporter": uid,
+            "reported": reported,
+            "reason": "webapp",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+
+        await message.answer("🚨 Жалоба отправлена")
+
         return
 
-
-# ---------------- CLEANUP (auto disable expired posts)
-async def cleanup():
+async def cleanup_loop():
     while True:
         try:
+            now = datetime.now(timezone.utc).isoformat()
+
             sb.table("posts") \
                 .update({"active": False}) \
-                .lt("expires_at", datetime.now(timezone.utc).isoformat()) \
+                .lt("expires_at", now) \
                 .execute()
 
         except Exception as e:
-            print("Cleanup error:", e)
+            print("cleanup error:", repr(e))
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
 
-
-# ---------------- MAIN
 async def main():
+    print("BOT STARTED")
+
     await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(cleanup())
+
+    asyncio.create_task(cleanup_loop())
+
     await dp.start_polling(bot)
 
 
-# ---------------- START BOT
 if __name__ == "__main__":
     asyncio.run(main())

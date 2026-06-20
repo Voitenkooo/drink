@@ -1,2 +1,3 @@
-aiogram==3.29.0
+aiogram
 supabase
+aiohttp

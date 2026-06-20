@@ -251,7 +251,8 @@ async def settings(message: Message):
         t(
             message.from_user.id,
             "settings"
-        ),
+        )
+    )
 
 def main_menu_kb(uid):
 

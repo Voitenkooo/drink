@@ -247,11 +247,11 @@ def parse_json_safe(data):
 # =========================================================
 @dp.message(F.text == "⚙️ Настройки")
 async def settings(message: Message):
+    uid = message.from_user.id
+
     await message.answer(
-        t(
-            message.from_user.id,
-            "settings"
-        )
+        t(uid, "settings"),
+        reply_markup=kb_settings
     )
 
 def main_menu_kb(uid):
@@ -470,6 +470,13 @@ async def create_start(message: Message):
         reply_markup=kb_back
     )
 
+
+@dp.message(F.text == "🌍 Язык")
+async def language_menu(message: Message):
+    await message.answer(
+        "🌍 Выбери язык:",
+        reply_markup=kb_lang
+    )
 
 @dp.message(F.text == "⬅️ Назад")
 async def back(message: Message):
